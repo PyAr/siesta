@@ -19,21 +19,20 @@
 Siesta is a REST client for python
 """
 
-#__all__ = ["API", "Resource"]
 __version__ = "0.5.2"
 __author__ = "Sebastian Castillo <castillobuiles@gmail.com>"
-__contributors__ = []
+__contributors__ = ["Emiliano Dalla Verde Marcozzi <edvm@fedoraproject.org>"]
+
 
 import re
 import time
 import urllib
-import httplib
+import http.client
+import urllib.parse
 import logging
 import simplejson as json
 
-from urlparse import urlparse
-
-USER_AGENT = "Python-siesta/%s" % __version__
+USER_AGENT = "Python3-siesta/%s" % __version__
 
 logging.basicConfig(level=0)
 
@@ -47,13 +46,13 @@ class Resource(object):
         #logging.info("init.uri: %s" % uri)
         self.api = api
         self.uri = uri
-        self.scheme, self.host, self.url, z1, z2 = httplib.urlsplit(self.api.base_url + self.uri)
+        self.scheme, self.host, self.url, z1, z2 = http.client.urlsplit(self.api.base_url + self.uri)
         self.id = None
         self.conn = None
         self.headers = {'User-Agent': USER_AGENT}
         self.attrs = {}
         self._errors = {}
-        
+
     def __getattr__(self, name):
         """
         Resource attributes (eg: user.name) have priority
@@ -134,7 +133,7 @@ class Resource(object):
     def _request(self, method, url, body={}, headers={}, meta={}):
         if self.api.auth:
             headers.update(self.api.auth.make_headers())
-        
+
         if self.conn != None:
             self.conn.close()
 
@@ -144,9 +143,9 @@ class Resource(object):
             headers['Accept'] = self.headers['Accept']
 
         if self.scheme == "http":
-            self.conn = httplib.HTTPConnection(self.host)
+            self.conn = http.client.HTTPConnection(self.host)
         elif self.scheme == "https":
-            self.conn = httplib.HTTPSConnection(self.host)
+            self.conn = http.client.HTTPSConnection(self.host)
         else:
             raise IOError("unsupported protocol: %s" % self.scheme)
 
@@ -160,7 +159,7 @@ class Resource(object):
 
     def _getresponse(self, method, url, body={}, headers={}, meta={}):
         resp = self.conn.getresponse()
-        
+
         #logging.info("status: %s" % resp.status)
         #logging.info("getheader: %s" % resp.getheader('content-type'))
         #logging.info("__read: %s" % resp.read())
@@ -201,7 +200,7 @@ class Resource(object):
             if not status_url:
                 raise Exception('Empty content-location from server')
 
-            status_uri = urlparse(status_url).path
+            status_uri = urllib.parse.urlparse(status_url).path
             status, st_resp  = Resource(uri=status_uri, api=self.api).get()
             retries = 0
             MAX_RETRIES = 3
@@ -212,18 +211,18 @@ class Resource(object):
                 retries += 1
                 status.get()
                 time.sleep(5)
-                
+
             if retries == MAX_RETRIES:
                 raise Exception('Max retries limit reached without success')
-            
+
             location = status.conn.getresponse().getheader('location')
-            resource = Resource(uri=urlparse(location).path, api=self.api).get()
+            resource = Resource(uri=urllib.parse.urlparse(location).path, api=self.api).get()
             return resource
         #logging.info("resp.getheader(): %s" % resp.getheader('content-type'))
         m = re.match('^([^;]*)(?:;\s*charset=(.*))?$',
                      resp.getheader('content-type'))
         #logging.info("response: %s" % resp)
-        
+
         if m == None:
             mime, encoding = ('', '')
         else:
@@ -235,7 +234,7 @@ class Resource(object):
             #logging.info("read: %s" % resp.read())
             #logging.info("ret: %s" % ret)
         elif mime == 'application/xml':
-            print 'application/xml not supported yet!'
+            print ('application/xml not supported yet!')
             ret = resp.read()
         else:
             ret = resp.read()
@@ -248,7 +247,7 @@ class Resource(object):
         #print "Errors: %s" % errors
         #print "Type ret: %s" % type(ret)
         #print ret
-        
+
         if isinstance(ret, list):
             #print "ret is list: %s" % ret
             ret_list = []
@@ -275,7 +274,7 @@ class Resource(object):
 class API(object):
     def __init__(self, base_url, auth=None):
         self.base_url = base_url + '/' if not base_url.endswith('/') else base_url
-        self.api_path = urlparse(base_url).path
+        self.api_path = urllib.parse.urlparse(base_url).path
         self.resources = {}
         self.request_type = None
         self.auth = auth
@@ -288,7 +287,7 @@ class API(object):
 
     def __getattr__(self, name):
         #logging.info("API.getattr.name: %s" % name)
-        
+
         key = name
         if not key in self.resources:
             #logging.info("Creating resource with uri: %s" % key)
